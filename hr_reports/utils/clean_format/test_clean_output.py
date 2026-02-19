@@ -173,9 +173,33 @@ def check_wh_calc(df):
             errs.append(f"Row {i}: calc={calc:.2f}h but WH={wh:.2f}h")
     return errs
 
+def check_employee(df):
+    """
+    Flag rows where Employee column is not blank and does not match the
+    expected ERPNext employee code pattern: starts with 'v' or 'V' followed
+    by digits (e.g. v38721, V12356).
+    A purely numeric value (e.g. 112222) means the raw Gate Pass number leaked
+    into the Employee column because the GP was not found in ERPNext master.
+    """
+    import re
+    pattern = re.compile(r'^[vV]\d+$')
+    errs = []
+    for i, r in df.iterrows():
+        emp = r.get("Employee", "")
+        if _is_blank(emp):
+            continue
+        emp_str = str(emp).strip()
+        if not pattern.match(emp_str):
+            errs.append(
+                f"Row {i}: Employee='{emp_str}' does not match expected pattern "
+                f"(must be blank or start with 'v'/'V' followed by digits, e.g. v38721)"
+            )
+    return errs
+
+
 ALL_CHECKS = dict(columns=check_columns, status=check_status, inout=check_inout,
                   overtime=check_overtime, shift=check_shift, dates=check_dates,
-                  wh_calc=check_wh_calc)
+                  wh_calc=check_wh_calc, employee=check_employee)
 
 def validate(df):
     return {n: fn(df) for n, fn in ALL_CHECKS.items()}
@@ -273,14 +297,14 @@ if __name__ == "__main__":
 D = "2025-01-15"  # default date
 
 def _r(**kw):
-    base = {"Attendance Date": D, "Employee": "E1", "Employee Name": "Test",
+    base = {"Attendance Date": D, "Employee": "v38721", "Employee Name": "Test",
             "Status": "Present", "In Time": f"{D} 09:00:00", "Out Time": f"{D} 17:00:00",
             "Company": "X", "Branch": "M", "Working Hours": 8.0, "Shift": "G", "Over Time": ""}
     base.update(kw)
     return pd.DataFrame([base])[EXPECTED_COLUMNS]
 
 def _good_df():
-    R = lambda **kw: {**{"Attendance Date": D, "Employee": "E1", "Employee Name": "T",
+    R = lambda **kw: {**{"Attendance Date": D, "Employee": "v38721", "Employee Name": "T",
                          "Company": "X", "Branch": "M"}, **kw}
     return pd.DataFrame([
         R(Status="Present",  **{"In Time": f"{D} 09:00:00", "Out Time": f"{D} 17:00:00", "Working Hours": 8.0,  "Shift": "G", "Over Time": ""}),
@@ -386,6 +410,27 @@ class TestValidators:
 
     def test_wh_hhmm(self):
         assert not check_wh_calc(_r(**{"In Time":f"{D} 09:00:00","Out Time":f"{D} 17:30:00","Working Hours":"08:30"}))
+
+    # --- employee code pattern ---
+    def test_employee_gp_number_flagged(self):
+        """Raw GP number in Employee column must be flagged."""
+        assert check_employee(_r(**{"Employee": "112222"}))
+
+    def test_employee_blank_ok(self):
+        """Blank Employee is acceptable (GP not found in master)."""
+        assert not check_employee(_r(**{"Employee": ""}))
+
+    def test_employee_valid_lowercase_v(self):
+        """Employee code starting with lowercase 'v' is valid."""
+        assert not check_employee(_r(**{"Employee": "v38721"}))
+
+    def test_employee_valid_uppercase_v(self):
+        """Employee code starting with uppercase 'V' is valid."""
+        assert not check_employee(_r(**{"Employee": "V12356"}))
+
+    def test_employee_invalid_no_prefix(self):
+        """Alphanumeric code without 'v' prefix must be flagged."""
+        assert check_employee(_r(**{"Employee": "EMP-001"}))
 
     # --- columns ---
     def test_cols_ok(self):
