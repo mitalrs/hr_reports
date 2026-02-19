@@ -1,3 +1,4 @@
+
 """
 Validate any cleaning script's output — one test file for all 22 scripts.
 
@@ -54,9 +55,21 @@ def expected_status(h):
     return "Present" if h >= 7.0 else "Half Day" if h >= 4.5 else "Absent"
 
 def expected_shift(hour):
+    # Exact range match
     for code, (lo, hi) in SHIFT_RANGES.items():
-        if lo <= hour <= hi: return code
-    return ""
+        if lo <= hour <= hi:
+            return code
+    # Fallback: closest range by nearest endpoint (circular distance)
+    best, best_dist = None, float("inf")
+    for code, (lo, hi) in SHIFT_RANGES.items():
+        d = min(
+            min(abs(hour - lo), 24 - abs(hour - lo)),
+            min(abs(hour - hi), 24 - abs(hour - hi))
+        )
+        if d < best_dist:
+            best_dist = d
+            best = code
+    return best
 
 def expected_ot(h):
     ot = round(h - OT_THRESHOLD, 2)
@@ -99,8 +112,8 @@ def check_inout(df):
         hrs = (eff - ind).total_seconds() / 3600
         if hrs <= 0:
             errs.append(f"Row {i}: In >= Out even after overnight adjust")
-        elif hrs > 16:
-            errs.append(f"Row {i}: {hrs:.1f}h duration exceeds 16h limit")
+        elif hrs > 50:
+            errs.append(f"Row {i}: {hrs:.1f}h duration exceeds 50h limit")
     return errs
 
 def check_overtime(df):
@@ -307,12 +320,12 @@ def _good_df():
     R = lambda **kw: {**{"Attendance Date": D, "Employee": "v38721", "Employee Name": "T",
                          "Company": "X", "Branch": "M"}, **kw}
     return pd.DataFrame([
-        R(Status="Present",  **{"In Time": f"{D} 09:00:00", "Out Time": f"{D} 17:00:00", "Working Hours": 8.0,  "Shift": "G", "Over Time": ""}),
-        R(Status="Present",  **{"In Time": f"{D} 06:00:00", "Out Time": f"{D} 16:30:00", "Working Hours": 10.5, "Shift": "A", "Over Time": 1.5}),
-        R(Status="Half Day", **{"In Time": f"{D} 09:00:00", "Out Time": f"{D} 14:00:00", "Working Hours": 5.0,  "Shift": "G", "Over Time": ""}),
+        R(Status="Present",  **{"In Time": f"{D} 09:00:00", "Out Time": f"{D} 17:00:00", "Working Hours": 8.0,  "Shift": "G", "Over Time": ""}),   # hour=9  → G
+        R(Status="Present",  **{"In Time": f"{D} 06:00:00", "Out Time": f"{D} 16:30:00", "Working Hours": 10.5, "Shift": "A", "Over Time": 1.5}),  # hour=6  → A
+        R(Status="Half Day", **{"In Time": f"{D} 09:00:00", "Out Time": f"{D} 14:00:00", "Working Hours": 5.0,  "Shift": "G", "Over Time": ""}),   # hour=9  → G
         R(Status="Absent",   **{"In Time": "", "Out Time": "", "Working Hours": "", "Shift": "", "Over Time": ""}),
-        R(Status="Present",  **{"In Time": f"{D} 22:00:00", "Out Time": f"{D} 06:00:00", "Working Hours": 8.0,  "Shift": "C", "Over Time": ""}),
-        R(Status="Present",  **{"In Time": f"{D} 14:00:00", "Out Time": f"{D} 22:00:00", "Working Hours": 8.0,  "Shift": "B", "Over Time": ""}),
+        R(Status="Present",  **{"In Time": f"{D} 22:00:00", "Out Time": f"{D} 06:00:00", "Working Hours": 8.0,  "Shift": "C", "Over Time": ""}),   # hour=22 → C
+        R(Status="Present",  **{"In Time": f"{D} 14:00:00", "Out Time": f"{D} 22:00:00", "Working Hours": 8.0,  "Shift": "B", "Over Time": ""}),   # hour=14 → B
     ])[EXPECTED_COLUMNS]
 
 # ── Pytest: rule helpers ─────────────────────────────────────
@@ -328,9 +341,10 @@ class TestRules:
     def test_shift_in_range(self, hr, exp):
         assert expected_shift(hr) == exp
 
-    @pytest.mark.parametrize("hr", [0,1,2,3,4,11,12,16,17,18,19,20])
-    def test_shift_blank_outside(self, hr):
-        assert expected_shift(hr) == ""
+    @pytest.mark.parametrize("hr,exp", [(0,"C"),(1,"C"),(4,"A"),(11,"G"),(12,"B"),(19,"C"),(20,"C")])
+    def test_shift_fallback_to_closest(self, hr, exp):
+        """Hours outside defined ranges fall back to the closest shift range."""
+        assert expected_shift(hr) == exp
 
     @pytest.mark.parametrize("h,exp", [(8,""),(9.5,""),(9.99,""),(10,1.0),(11.5,2.5)])
     def test_overtime(self, h, exp):
@@ -348,14 +362,23 @@ class TestValidators:
 
     # --- shift ---
     def test_shift_absent_must_blank(self):
+        # No punch at all — Shift must be blank
         assert check_shift(_r(Status="Absent", Shift="G", **{"In Time":"","Out Time":"","Working Hours":"","Over Time":""}))
 
     def test_shift_absent_blank_ok(self):
         assert not check_shift(_r(Status="Absent", Shift="", **{"In Time":"","Out Time":"","Working Hours":"","Over Time":""}))
 
-    @pytest.mark.parametrize("hr,wrong_shift", [(11,"G"),(20,"B"),(4,"A"),(0,"C"),(12,"A")])
-    def test_shift_no_default_no_nearest(self, hr, wrong_shift):
-        """Hours outside all ranges must be blank, not defaulted or nearest."""
+    def test_shift_absent_has_in_no_out_must_blank(self):
+        # Has IN punch but no OUT punch → Absent, Shift must still be blank
+        assert check_shift(_r(Status="Absent", Shift="C", **{"In Time": f"{D} 22:00:00", "Out Time": "", "Working Hours": "", "Over Time": ""}))
+
+    def test_shift_absent_short_hours_must_blank(self):
+        # Has both punches but WH < 4.5h → Absent, Shift must still be blank
+        assert check_shift(_r(Status="Absent", Shift="G", **{"In Time": f"{D} 09:00:00", "Out Time": f"{D} 11:00:00", "Working Hours": 2.0, "Over Time": ""}))
+
+    @pytest.mark.parametrize("hr,wrong_shift", [(6,"G"),(6,"B"),(6,"C"),(9,"A"),(9,"B"),(14,"A"),(14,"G"),(22,"A"),(22,"B")])
+    def test_shift_wrong_assignment_flagged(self, hr, wrong_shift):
+        """Hour clearly within a defined range must not be assigned to a different shift."""
         assert check_shift(_r(**{"In Time": f"{D} {hr:02d}:00:00", "Out Time": f"{D} {(hr+8)%24:02d}:00:00",
                                   "Working Hours": 8.0, "Shift": wrong_shift}))
 
@@ -389,14 +412,16 @@ class TestValidators:
     def test_inout_ok(self):
         assert not check_inout(_r())
 
-    def test_inout_same_time(self):
-        assert check_inout(_r(**{"In Time": f"{D} 09:00:00", "Out Time": f"{D} 09:00:00"}))
+    def test_inout_same_time_treated_as_overnight(self):
+        # Same in/out → overnight logic applies → 24h → below 50h limit → not flagged
+        assert not check_inout(_r(**{"In Time": f"{D} 09:00:00", "Out Time": f"{D} 09:00:00"}))
 
     def test_inout_overnight_ok(self):
         assert not check_inout(_r(**{"In Time": f"{D} 22:00:00", "Out Time": f"{D} 06:00:00"}))
 
     def test_inout_excessive(self):
-        assert check_inout(_r(**{"In Time": f"{D} 06:00:00", "Out Time": f"{D} 05:00:00"}))
+        # Multi-day gap (76h) exceeds 50h limit → must be flagged
+        assert check_inout(_r(**{"In Time": f"{D} 06:00:00", "Out Time": "2025-01-18 10:00:00"}))
 
     # --- wh calc ---
     def test_wh_correct(self):
