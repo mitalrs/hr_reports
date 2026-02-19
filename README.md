@@ -42,4 +42,5 @@ test cases added for
 - In/Out time sanity
 - Working hours calculation
 - employee col validator
+- blank shift cell on absent status
 
