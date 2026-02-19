@@ -31,3 +31,15 @@ Pre-commit is configured to use the following tools for checking and formatting 
 ### License
 
 mit
+
+
+test cases added for 
+- Column presence/order                                                       
+- Status logic (Present/Half Day/Absent)                                      
+- Shift detection
+- Overtime calculation
+- Date format validation
+- In/Out time sanity
+- Working hours calculation
+- employee col validator
+
