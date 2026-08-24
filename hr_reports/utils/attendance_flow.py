@@ -395,7 +395,7 @@ def process_uploaded_file(doc, method):
             )
             append_log(doc, "Step 2: Used clean_daily_inout2 for Jharsuguda")
 
-        elif doc.branch in ["Bellari obp2","Bellari (JVML & STEEL)","JVML Bellari - VEIL"]:
+        elif doc.branch in ["Bellari obp2","Bellari (JVML & STEEL)","JVML Bellari - VEIL","JSW Bellari"]:
             clean_daily_inout30(
                 input_path=local_path,
                 output_path=cleaned_path,
