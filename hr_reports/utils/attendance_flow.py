@@ -14,7 +14,6 @@ from hr_reports.utils.clean_format.clean_daily_inout2 import clean_daily_inout2
 from hr_reports.utils.clean_format.clean_daily_inout12 import clean_daily_inout12
 from hr_reports.utils.clean_format.clean_daily_inout29 import clean_daily_inout29
 from hr_reports.utils.clean_format.clean_daily_inout30 import clean_daily_inout30
-from hr_reports.utils.clean_format.clean_daily_inout30_2 import clean_daily_inout30_2
 from hr_reports.utils.clean_format.clean_daily_inout7 import clean_daily_inout7
 from hr_reports.utils.clean_format.clean_daily_inout7_1 import clean_daily_inout7_1
 from hr_reports.utils.clean_format.clean_daily_inout7_2 import clean_daily_inout7_2
@@ -23,6 +22,7 @@ from hr_reports.utils.clean_format.clean_daily_inout_matrix import clean_daily_i
 from hr_reports.utils.clean_format.clean_daily_inout_matrix_2 import clean_daily_inout_matrix_2
 from hr_reports.utils.clean_format.clean_daily_inout16 import clean_daily_inout16
 from hr_reports.utils.clean_format.clean_daily_inout17 import clean_daily_inout17
+from hr_reports.utils.clean_format.clean_daily_inout31 import clean_daily_inout31
 from hr_reports.utils.clean_format.clean_daily_inout18 import clean_daily_inout18
 from hr_reports.utils.clean_format.clean_daily_inout_pdf import clean_daily_inout_pdf
 from frappe.core.doctype.data_import.data_import import start_import
@@ -405,13 +405,13 @@ def process_uploaded_file(doc, method):
             append_log(doc, "Step 2: Used clean_daily_inout30 for Bellary")
 
         elif doc.branch in ["KCL MUNDRA - VEIL"]:
-            clean_daily_inout30_2(
+            clean_daily_inout31(
                 input_path=local_path,
                 output_path=cleaned_path,
                 company=doc.company,
                 branch=doc.branch
             )
-            append_log(doc, "Step 2: Used clean_daily_inout30_2 for KCL Mundra")
+            append_log(doc, "Step 2: Used clean_daily_inout31 for KCL Mundra monthly punch report format")
 
         elif doc.branch in ["PARADIP", "JSW Paradeep"]:
             clean_daily_inout29(
