@@ -95,14 +95,6 @@ def format_datetime(date_val, time_val):
         except Exception:
             return None
 
-    suffix = "AM"
-    if hours >= 12:
-        suffix = "PM"
-        if hours > 12:
-            hours -= 12
-    elif hours == 0:
-        hours = 12
-
     return date_val.strftime("%Y-%m-%d") + f" {hours:02d}:{minutes:02d}:{seconds:02d}"
 
 def _to_float_workhrs(time_str):
@@ -262,7 +254,7 @@ def clean_daily_inout13(input_path: str, output_path: str, company: str = None, 
             "Out Time": out_time_fmt,
             "Company": company if company else "",
             "Branch": branch if branch else "",
-            "Working Hours": work_hrs,
+            "Working Hours": work_hrs_decimal,
             "Shift": shift,
             "Over Time": overtime_val,
             "Leave Type": "",
